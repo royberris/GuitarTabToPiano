@@ -232,6 +232,7 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
         </CardHeader>
         
         <CardContent className="flex-1 overflow-y-auto p-4 pt-0">
+          <div className="h-px bg-gray-200 mb-4" />
           <div className="space-y-2">
             {tabs.length === 0 ? (
               <div className="text-center text-gray-500 text-sm py-8">
