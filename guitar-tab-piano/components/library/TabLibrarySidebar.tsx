@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useTabLibrary } from '@/app/contexts/TabLibraryContext';
-import { Plus, FileText, Trash2, Edit3, Music } from 'lucide-react';
+import { Plus, FileText, Trash2, Edit3, Music, Download, Upload } from 'lucide-react';
 
 interface TabLibrarySidebarProps {
   onTabSelect?: (content: string) => void;
@@ -22,6 +22,90 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  function exportTab(tab: any) {
+    try {
+      const payload = {
+        format: 'guitar-tab-json',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        tab: {
+          name: tab.name,
+          bpm: tab.bpm,
+          steps: tab.steps,
+          content: tab.content,
+        },
+      };
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = (tab.name || 'tab').replace(/[^a-z0-9_-]/gi, '_');
+      a.href = url;
+      a.download = `${safeName}.guitartab.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert('Failed to export tab: ' + (e?.message || e));
+    }
+  }
+
+  function handleImportJson(file: File) {
+    setImportError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = reader.result as string;
+        const data = JSON.parse(text);
+        if (!data || typeof data !== 'object') throw new Error('Invalid JSON root');
+        if (data.format !== 'guitar-tab-json') throw new Error('Unsupported format');
+        if (!data.tab) throw new Error('Missing tab object');
+        const { name, bpm, steps, content } = data.tab;
+        if (typeof name !== 'string' || !name.trim()) throw new Error('Invalid name');
+        if (typeof content !== 'string' || content.trim().length === 0) throw new Error('Invalid content');
+        const bpmNum = typeof bpm === 'number' ? bpm : 80;
+        if (bpmNum < 40 || bpmNum > 240) throw new Error('BPM out of range (40-240)');
+        let stepsNum = typeof steps === 'number' ? steps : inferSteps(content);
+        if (stepsNum < 8 || stepsNum > 124) {
+          // attempt inference override
+          const inferred = inferSteps(content);
+          stepsNum = inferred;
+        }
+        // Create new tab
+        const newTab = createTab(name.trim(), content, bpmNum, stepsNum);
+        selectTab(newTab.id);
+        if (onTabSelect) onTabSelect(newTab.content);
+        setIsLoadingTab(false);
+        setLoadTabName('');
+        setLoadTabContent('');
+        setLoadTabBpm(80);
+      } catch (err: any) {
+        setImportError(err?.message || 'Failed to parse file.');
+      }
+    };
+    reader.onerror = () => setImportError('Could not read file');
+    reader.readAsText(file);
+  }
+
+  function inferSteps(content: string): number {
+    const lines = content.replace(/\r/g,'').split('\n').filter(l => /^(e|B|G|D|A|E)\|/.test(l));
+    if (lines.length < 6) return 24;
+    const first = lines[0];
+    const body = first.slice(first.indexOf('|')+1).replace(/\|+$/,'');
+    if (body.length % 2 === 0) {
+      let fixed = true;
+      for (let i=0;i<body.length;i+=2){
+        const pair = body.slice(i,i+2);
+        if (!/^--|\d-|\d\d$/.test(pair)) { fixed=false; break; }
+      }
+      if (fixed) return body.length/2;
+    }
+    return body.length || 24;
+  }
 
   const handleCreateTab = () => {
     if (newTabName.trim()) {
@@ -77,13 +161,15 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
     }
     // Normalize lines: ensure each ends with a trailing pipe
     const normalized = result.lines!.map(l => l.endsWith('|') ? l : l + '|').join('\n');
-    const newTab = createTab(name, normalized);
+    const steps = inferSteps(normalized);
+    const newTab = createTab(name, normalized, loadTabBpm, steps);
     selectTab(newTab.id);
     if (onTabSelect) onTabSelect(newTab.content);
     // Reset loader state
     setIsLoadingTab(false);
     setLoadTabName('');
     setLoadTabContent('');
+    setLoadTabBpm(80);
   };
 
   const handleSelectTab = (tabId: string) => {
@@ -113,9 +199,7 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
     setEditingName(currentName);
   };
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  // Removed date display from card; keeping clean minimal metadata
 
   return (
     <div className="w-80 h-screen bg-gray-50 border-r border-gray-200 flex flex-col">
@@ -184,7 +268,7 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
           )}
 
           {isLoadingTab && (
-            <div className="space-y-2 mt-2">
+            <div className="space-y-3 mt-2">
               <input
                 type="text"
                 placeholder="Tab name... (optional)"
@@ -212,6 +296,29 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
                 className="w-full h-32 text-xs font-mono p-2 border rounded-md resize-none"
               />
               {loadError && <div className="text-xs text-red-600">{loadError}</div>}
+              <div className="text-center text-[10px] text-gray-500">OR</div>
+              <div className="flex flex-col gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleImportJson(f);
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2"
+                >
+                  <Upload className="w-3 h-3" /> Import JSON
+                </Button>
+                {importError && <div className="text-xs text-red-600">{importError}</div>}
+              </div>
               <div className="flex gap-2">
                 <Button 
                   onClick={handleLoadTab}
@@ -226,7 +333,7 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
                   className="flex-1"
                 >Cancel</Button>
               </div>
-              <div className="text-[10px] text-gray-500">Only standard 6-line ASCII tabs accepted.</div>
+              <div className="text-[10px] text-gray-500">Paste ASCII OR import exported JSON (validates format).</div>
             </div>
           )}
         </CardHeader>
@@ -276,13 +383,11 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
                         <h3 className="font-medium text-sm truncate">{tab.name}</h3>
                       )}
                       
-                      <p className="text-xs text-gray-500 mt-1">
-                        {formatDate(tab.updatedAt)}
-                      </p>
-                      
-                      {/* Preview first line */}
-                      <div className="text-xs text-gray-400 mt-1 font-mono truncate">
-                        {tab.content.split('\n')[0] || 'Empty tab'}
+                      <div className="mt-1">
+                        <p className="text-xs flex gap-3">
+                          <span className="text-blue-600 font-semibold">BPM {tab.bpm}</span>
+                          <span className="text-purple-600 font-semibold">Steps {tab.steps}</span>
+                        </p>
                       </div>
                     </div>
                     
@@ -296,6 +401,13 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
                         title="Rename"
                       >
                         <Edit3 className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); exportTab(tab); }}
+                        className="p-1 text-gray-400 hover:text-green-600 rounded"
+                        title="Export JSON"
+                      >
+                        <Download className="w-3 h-3" />
                       </button>
                       <button
                         onClick={(e) => {
