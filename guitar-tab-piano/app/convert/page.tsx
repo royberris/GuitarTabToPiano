@@ -251,6 +251,16 @@ export default function GuitarTabToPiano() {
     }
   }
 
+  // Cleanup on unmount (page navigation) to stop any running playback timer
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
       <div className="text-center">
@@ -418,3 +428,6 @@ export default function GuitarTabToPiano() {
     </div>
   );
 }
+
+// Ensure playback stops when the component unmounts (page navigation).
+// Note: Keeping this outside component body is invalid; we add an effect inside component.
