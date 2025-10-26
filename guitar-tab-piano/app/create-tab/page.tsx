@@ -284,6 +284,11 @@ export default function CreateTab() {
                 <Link href="/convert">🎹 Convert to Piano</Link>
               </Button>
             </div>
+            <div>
+              <Button asChild variant="outline" className="w-full" title="Visualize on guitar">
+                <Link href="/visualize-guitar">🎸 Guitar Visualizer</Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

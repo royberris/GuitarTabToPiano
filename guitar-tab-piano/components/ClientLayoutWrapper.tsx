@@ -151,6 +151,12 @@ export function ClientLayoutWrapper({ children }: ClientLayoutWrapperProps) {
                 >
                   Convert to Piano
                 </Link>
+                <Link 
+                  href="/visualize-guitar" 
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
+                >
+                  Guitar Visualizer
+                </Link>
               </div>
             </div>
           </nav>

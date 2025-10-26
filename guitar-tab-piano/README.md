@@ -20,6 +20,22 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Feature Overview
+
+### Visual Tab Creator (`/create-tab`)
+Grid-based editor. Left click increases fret, right click decreases/removes. Encodes each step with 2 characters to avoid merged digits (`--`, `d-`, `dd`). Auto-saves to localStorage with BPM and step count.
+
+### Piano Converter (`/convert`)
+Parses ASCII tab → MIDI → Piano key numbers (1–88). Highlights keys and plays chords using a piano Soundfont. Each step treated as an eighth note (tempo adjustable).
+
+### Guitar Visualizer (`/visualize-guitar`)
+NEW: Real-time fretboard highlighting. Uses the same parser to show active frets across strings (standard tuning). Plays notes with an acoustic guitar Soundfont (nylon fallback to steel). Adjustable max fret rendering (8–24) and BPM.
+
+### Navigation / Data
+- Tabs stored in localStorage under `guitar-tab-library`.
+- Standard tuning fixed (e4 B3 G3 D3 A2 E2). Max fret clamp = 24.
+- Parse supports fixed-width and legacy variable-width tabs.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
 import Soundfont from "soundfont-player"; // dependency already installed
+import { parseAsciiTab, midiToName, midiToKeyNumber, isBlackKey, A0_MIDI } from "@/lib/tabParser";
 import { useTabLibrary } from "@/app/contexts/TabLibraryContext";
 import { useContent } from "@/components/ClientLayoutWrapper";
 
@@ -25,189 +26,12 @@ import { useContent } from "@/components/ClientLayoutWrapper";
  */
 
 // ---------- Music helpers ----------
-const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"] as const;
-const A0_MIDI = 21; // A0
-const C8_MIDI = 108; // highest typical piano key
 const PIANO_KEYS = Array.from({ length: 88 }, (_, i) => A0_MIDI + i);
 
-function midiToKeyNumber(midi: number) {
-  // Piano key numbering 1–88 where A0 (21) → 1
-  return midi - 20;
-}
-
-function midiToName(midi: number) {
-  const pitch = midi % 12;
-  // MIDI convention: C4 = 60, C3 = 48, C5 = 72
-  // Octave number = floor(midi / 12) - 1, but adjust for C being 0 in the scale
-  const octave = Math.floor(midi / 12) - 1;
-  return `${NOTE_NAMES[pitch]}${octave}`;
-}
-
-function isBlackKey(midi: number) {
-  // Black keys correspond to sharps/flats: C#, D#, F#, G#, A#
-  // In chromatic scale: C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11
-  return [1, 3, 6, 8, 10].includes(midi % 12);
-}
-
-// Guitar standard tuning high→low: E4 B3 G3 D3 A2 E2
-// MIDI Convention: C4 (middle C) = 60
-// Let's verify each string:
-// E4: E is 4 semitones above C, so C4(60) + 4 = 64 ✓
-// B3: B is 11 semitones above C, C3 is 48, so 48 + 11 = 59 ✓  
-// G3: G is 7 semitones above C, C3 is 48, so 48 + 7 = 55 ✓
-// D3: D is 2 semitones above C, C3 is 48, so 48 + 2 = 50 ✓
-// A2: A is 9 semitones above C, C2 is 36, so 36 + 9 = 45 ✓
-// E2: E is 4 semitones above C, C2 is 36, so 36 + 4 = 40 ✓
-const STRING_OPEN_MIDI = {
-  e: 64, // E4 
-  B: 59, // B3  
-  G: 55, // G3 
-  D: 50, // D3 
-  A: 45, // A2 
-  E: 40, // E2 
-};
+// STRING_OPEN_MIDI now lives in shared parser module.
 
 // ---------- Tab Parser ----------
-  function parseAsciiTab(tabText: string) {
-    // Normalize newlines, trim empty lines
-    const lines = tabText.replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
-    // Find the 6 tab lines in order top→bottom; allow labels like "e|" or "E|"
-    // We'll try to detect by starting letters
-    const candidates = [] as string[];
-    for (const line of lines) {
-      // take everything after first '|' if present to reduce noise
-      const pipeIdx = line.indexOf("|");
-      const body = pipeIdx >= 0 ? line.slice(pipeIdx + 1) : line;
-      // keep only lines that look tabby (mostly - digits and symbols)
-      if (/^[\-\d\s|hHpP/\\~()*xX<>]+$/.test(body)) {
-        candidates.push(line);
-      }
-    }
-    // If user pasted exactly 6 lines, prefer those
-    let tabLines: string[] = [];
-    if (candidates.length >= 6) {
-      // Try to find a window of 6 consecutive lines
-      for (let i = 0; i <= candidates.length - 6; i++) {
-        const chunk = candidates.slice(i, i + 6);
-        // Heuristic: top line starts with 'e' or 'E'
-        if (/^\s*[eE]/.test(chunk[0]) && /^\s*[B]/.test(chunk[1])) {
-          tabLines = chunk;
-          break;
-        }
-      }
-      if (tabLines.length === 0) {
-        tabLines = candidates.slice(0,6);
-      }
-    } else {
-      tabLines = lines.slice(0,6);
-    }
-    if (tabLines.length < 6) throw new Error("Need 6 tab lines (e, B, G, D, A, E). Paste a standard ASCII guitar tab.");
-
-    // Check if this is a sectioned format (contains multiple | dividers)
-    const firstLineContent = tabLines[0].slice(tabLines[0].indexOf("|") + 1);
-    const isNewSectionedFormat = (firstLineContent.match(/\|/g) || []).length > 0;
-
-    let maxLen = 0;
-    let padded: string[] = [];
-
-    if (isNewSectionedFormat) {
-      // Handle new sectioned format: e|----|----|
-      const sections: string[][] = [];
-      
-      tabLines.forEach((line) => {
-        const parts = line.split('|').slice(1); // Remove first empty part before first |
-        // Remove any trailing empty parts
-        while (parts.length > 0 && parts[parts.length - 1].trim() === '') {
-          parts.pop();
-        }
-        sections.push(parts);
-      });
-
-      // Flatten sections into continuous content
-      const flattened = sections.map(stringSections => stringSections.join(''));
-      maxLen = Math.max(...flattened.map(l => l.length));
-      padded = flattened.map((l) => l.padEnd(maxLen, "-"));
-    } else {
-      // Handle old format: e|----------------|
-      const cleaned = tabLines.map((l) => {
-        const idx = l.indexOf("|");
-        let body = (idx >= 0 ? l.slice(idx + 1) : l).replace(/\s+/g, "");
-        body = body.replace(/\|+$/,''); // drop trailing pipe(s)
-        return body;
-      });
-
-      // Ensure all lines equal length by padding
-      maxLen = Math.max(...cleaned.map((l) => l.length));
-      padded = cleaned.map((l) => l.padEnd(maxLen, "-"));
-    }
-
-    // Map lines to string names in order e B G D A E (top→bottom)
-    const order = ["e","B","G","D","A","E"] as const;
-
-    // Detect fixed-width encoding (each logical step is 2 chars: '--', 'd-', or 'dd')
-    const isFixedWidth = padded.every(line => line.length % 2 === 0 && (() => {
-      for (let i = 0; i < line.length; i += 2) {
-        const pair = line.slice(i, i + 2);
-        if (!/^--|\d-|\d\d$/.test(pair)) return false;
-      }
-      return true;
-    })());
-
-  const events: { step: number; notes: { string: string; fret: number; midi: number; key: number; name: string }[] }[] = [];
-
-    if (isFixedWidth) {
-      const logicalSteps = maxLen / 2;
-      for (let step = 0; step < logicalSteps; step++) {
-        const notesAtCol: { string: string; fret: number; midi: number; key: number; name: string }[] = [];
-        const charIndex = step * 2;
-        for (let r = 0; r < 6; r++) {
-          const pair = padded[r].slice(charIndex, charIndex + 2);
-          let fret: number | null = null;
-          if (/^\d-$/.test(pair)) fret = parseInt(pair[0], 10);
-          else if (/^\d\d$/.test(pair)) fret = parseInt(pair, 10);
-          // Clamp max fret to 24
-          if (fret !== null && fret <= 24) {
-            const stringName = order[r];
-            const openMidi = (STRING_OPEN_MIDI as any)[stringName] as number;
-            const midi = openMidi + fret;
-            if (midi >= A0_MIDI && midi <= C8_MIDI) {
-              const key = midiToKeyNumber(midi);
-              notesAtCol.push({ string: stringName, fret, midi, key, name: midiToName(midi) });
-            }
-          }
-        }
-        events.push({ step, notes: notesAtCol });
-      }
-      return { events, steps: logicalSteps };
-    }
-
-    // Fallback legacy variable-width parsing
-  const grid = padded.map((l) => l.split(""));
-    for (let col = 0; col < maxLen; col++) {
-      const notesAtCol: { string: string; fret: number; midi: number; key: number; name: string }[] = [];
-      for (let r = 0; r < 6; r++) {
-        const ch = grid[r][col];
-        if (/\d/.test(ch)) {
-          let numStr = ch;
-          let advance = 0;
-          if (col + 1 < maxLen && /\d/.test(grid[r][col + 1])) { numStr += grid[r][col + 1]; advance++; }
-          if (col + 2 < maxLen && /\d/.test(grid[r][col + 2])) { numStr += grid[r][col + 2]; advance++; }
-          let fret = parseInt(numStr, 10);
-          if (fret > 24) fret = 24; // clamp
-          const stringName = order[r];
-          const openMidi = (STRING_OPEN_MIDI as any)[stringName] as number;
-          const midi = openMidi + fret;
-          if (midi >= A0_MIDI && midi <= C8_MIDI) {
-            const key = midiToKeyNumber(midi);
-            notesAtCol.push({ string: stringName, fret, midi, key, name: midiToName(midi) });
-          }
-          for (let k = 1; k <= advance; k++) grid[r][col + k] = '-';
-        }
-      }
-      events.push({ step: col, notes: notesAtCol });
-    }
-    return { events, steps: maxLen };
-  }// ---------- UI Components ----------
+  // ---------- UI Components ----------
 function Keyboard({ activeMidis }: { activeMidis: number[] }) {
   // Render 88-key keyboard, highlight activeMidis
   return (

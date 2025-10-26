@@ -65,6 +65,9 @@ export default function HomeOverview() {
 							<Button className="w-full" variant="secondary" asChild disabled={!hasTab}>
 								<Link href="/convert">🎹 Play Tab on Piano</Link>
 							</Button>
+							<Button className="w-full" variant="outline" asChild disabled={!hasTab}>
+								<Link href="/visualize-guitar">🎸 Visualize on Guitar</Link>
+							</Button>
 						</CardContent>
 					</Card>
 
