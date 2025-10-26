@@ -19,9 +19,15 @@ export function Fretboard({ activeNotes, maxFrets = 12, showNoteNames = true }: 
     <div className="w-full overflow-x-auto">
       <div className="min-w-max">
         {/* Fret numbers header */}
-        <div className="flex mb-2 ml-12">
+        <div className="flex mb-2 select-none">
+          <div className="w-12 pr-2" />
           {Array.from({ length: clampedMax + 1 }, (_, fret) => (
-            <div key={fret} className="w-12 text-center text-[10px] text-neutral-500">{fret}</div>
+            <div
+              key={fret}
+              className="w-12 m-0.5 text-center text-[10px] font-mono tabular-nums text-neutral-500"
+            >
+              {fret}
+            </div>
           ))}
         </div>
         {STRING_ORDER.map(stringName => (

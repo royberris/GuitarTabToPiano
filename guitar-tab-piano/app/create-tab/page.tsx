@@ -191,9 +191,12 @@ export default function CreateTab() {
           <div className="overflow-x-auto">
             <div className="min-w-max">
               <div className="flex mb-2 select-none">
-                <div className="w-8" />
+                <div className="w-8 pr-2" />
                 {Array.from({ length: totalSteps }, (_, i) => (
-                  <div key={i} className="w-10 text-center text-[10px] text-gray-500">
+                  <div
+                    key={i}
+                    className="w-10 m-0.5 text-center text-[10px] text-gray-500 font-mono tabular-nums"
+                  >
                     {i + 1}
                   </div>
                 ))}
@@ -203,16 +206,21 @@ export default function CreateTab() {
                   <div className="w-8 text-right pr-2 text-sm font-mono font-bold">{s}</div>
                   {Array.from({ length: totalSteps }, (_, step) => {
                     const note = getNote(stringIndex, step);
+                    // Always render a two-character cell for visual alignment: '--', 'd-', 'dd'
+                    const cellText = note
+                      ? (note.fret < 10 ? `${note.fret}-` : `${note.fret}`) // single digit padded, double digit as-is
+                      : '--';
                     return (
                       <button
                         key={step}
-                        className={`w-10 h-10 m-0.5 border rounded text-xs font-mono flex items-center justify-center transition-colors
+                        className={`w-10 h-10 m-0.5 border rounded text-[11px] font-mono tabular-nums flex items-center justify-center transition-colors select-none
                           ${note ? 'bg-blue-500 text-white border-blue-600 hover:bg-blue-600' : 'bg-gray-50 hover:bg-gray-100 border-gray-300'}`}
                         onClick={(e) => { e.preventDefault(); increaseNote(stringIndex, step); }}
                         onContextMenu={(e) => { e.preventDefault(); decreaseNote(stringIndex, step); }}
                         title={`String ${s}, Step ${step + 1}${note ? `, Fret ${note.fret}` : ''}\nLeft click: increase fret\nRight click: decrease/remove`}
+                        // Keep buttons keyboard focusable; alignment improved by consistent two-char content
                       >
-                        {note?.fret ?? ''}
+                        <span className="leading-none">{cellText}</span>
                       </button>
                     );
                   })}
