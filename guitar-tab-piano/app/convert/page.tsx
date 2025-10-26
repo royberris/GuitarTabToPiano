@@ -297,8 +297,9 @@ export default function GuitarTabToPiano() {
   // Convert BPM to milliseconds per step (assuming 16th notes)
   const msPerStep = useMemo(() => {
     // 60000 ms per minute / BPM = ms per quarter note
-    // Divide by 4 for 16th notes
-    return (60000 / bpm) / 4;
+    // Previously treated each step as a 16th note ((60000/bpm)/4)
+    // We now make each step twice as long (8th note): (60000/bpm)/2
+    return (60000 / bpm) / 2;
   }, [bpm]);
 
   // Enable audio by default on component mount
