@@ -131,7 +131,9 @@ const STRING_OPEN_MIDI = {
       // Handle old format: e|----------------|
       const cleaned = tabLines.map((l) => {
         const idx = l.indexOf("|");
-        return (idx >= 0 ? l.slice(idx + 1) : l).replace(/\s+/g, "");
+        let body = (idx >= 0 ? l.slice(idx + 1) : l).replace(/\s+/g, "");
+        body = body.replace(/\|+$/,''); // drop trailing pipe(s)
+        return body;
       });
 
       // Ensure all lines equal length by padding
@@ -142,48 +144,68 @@ const STRING_OPEN_MIDI = {
     // Map lines to string names in order e B G D A E (top→bottom)
     const order = ["e","B","G","D","A","E"] as const;
 
-    // Build a grid of characters [stringIndex][column]
-    const grid = padded.map((l) => l.split(""));
+    // Detect fixed-width encoding (each logical step is 2 chars: '--', 'd-', or 'dd')
+    const isFixedWidth = padded.every(line => line.length % 2 === 0 && (() => {
+      for (let i = 0; i < line.length; i += 2) {
+        const pair = line.slice(i, i + 2);
+        if (!/^--|\d-|\d\d$/.test(pair)) return false;
+      }
+      return true;
+    })());
 
-    // Scan columns; if a digit, read possibly 2-digit or 3-digit number
-    const events: { step: number; notes: { string: string; fret: number; midi: number; key: number; name: string }[] }[] = [];
+  const events: { step: number; notes: { string: string; fret: number; midi: number; key: number; name: string }[] }[] = [];
 
+    if (isFixedWidth) {
+      const logicalSteps = maxLen / 2;
+      for (let step = 0; step < logicalSteps; step++) {
+        const notesAtCol: { string: string; fret: number; midi: number; key: number; name: string }[] = [];
+        const charIndex = step * 2;
+        for (let r = 0; r < 6; r++) {
+          const pair = padded[r].slice(charIndex, charIndex + 2);
+          let fret: number | null = null;
+          if (/^\d-$/.test(pair)) fret = parseInt(pair[0], 10);
+          else if (/^\d\d$/.test(pair)) fret = parseInt(pair, 10);
+          // Clamp max fret to 24
+          if (fret !== null && fret <= 24) {
+            const stringName = order[r];
+            const openMidi = (STRING_OPEN_MIDI as any)[stringName] as number;
+            const midi = openMidi + fret;
+            if (midi >= A0_MIDI && midi <= C8_MIDI) {
+              const key = midiToKeyNumber(midi);
+              notesAtCol.push({ string: stringName, fret, midi, key, name: midiToName(midi) });
+            }
+          }
+        }
+        events.push({ step, notes: notesAtCol });
+      }
+      return { events, steps: logicalSteps };
+    }
+
+    // Fallback legacy variable-width parsing
+  const grid = padded.map((l) => l.split(""));
     for (let col = 0; col < maxLen; col++) {
       const notesAtCol: { string: string; fret: number; midi: number; key: number; name: string }[] = [];
-
       for (let r = 0; r < 6; r++) {
         const ch = grid[r][col];
-        if (/[0-9]/.test(ch)) {
-          // peek ahead for multi-digit
+        if (/\d/.test(ch)) {
           let numStr = ch;
           let advance = 0;
-          // Allow up to 2 extra digits (frets like 10, 11, 12, 13, 14, 15, 19, 21, 24)
-          if (col + 1 < maxLen && /[0-9]/.test(grid[r][col + 1])) { numStr += grid[r][col + 1]; advance++; }
-          if (col + 2 < maxLen && /[0-9]/.test(grid[r][col + 2])) { numStr += grid[r][col + 2]; advance++; }
-          const fret = parseInt(numStr, 10);
-
-          // Determine string name from r (row index). r=0 is top line → 'e'
+          if (col + 1 < maxLen && /\d/.test(grid[r][col + 1])) { numStr += grid[r][col + 1]; advance++; }
+          if (col + 2 < maxLen && /\d/.test(grid[r][col + 2])) { numStr += grid[r][col + 2]; advance++; }
+          let fret = parseInt(numStr, 10);
+          if (fret > 24) fret = 24; // clamp
           const stringName = order[r];
           const openMidi = (STRING_OPEN_MIDI as any)[stringName] as number;
           const midi = openMidi + fret;
-          if (midi < A0_MIDI || midi > C8_MIDI) {
-            // Skip notes outside piano range; guitar rarely exceeds, but bends/very high frets could
-          } else {
+          if (midi >= A0_MIDI && midi <= C8_MIDI) {
             const key = midiToKeyNumber(midi);
             notesAtCol.push({ string: stringName, fret, midi, key, name: midiToName(midi) });
           }
-
-          // Mark consumed digits as '-' so they aren't double-read
-          for (let k = 1; k <= advance; k++) {
-            grid[r][col + k] = "-";
-          }
+          for (let k = 1; k <= advance; k++) grid[r][col + k] = '-';
         }
       }
-
-      // Always create an event for each column, even if no notes (for proper timing)
       events.push({ step: col, notes: notesAtCol });
     }
-
     return { events, steps: maxLen };
   }// ---------- UI Components ----------
 function Keyboard({ activeMidis }: { activeMidis: number[] }) {
@@ -445,6 +467,7 @@ export default function GuitarTabToPiano() {
             <div className="mt-4">
               <label className="text-sm font-medium">Tempo: {bpm} BPM</label>
               <Slider value={[bpm]} onValueChange={(v)=>setBpm(v[0])} min={40} max={200} step={5}/>
+              <div className="mt-2 text-xs text-neutral-500">Encoding: each step is 2 chars (-- empty, d- single, dd double). Playback unaffected; max fret = 24.</div>
             </div>
           </CardContent>
         </Card>

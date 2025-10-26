@@ -41,50 +41,65 @@ export default function CreateTab() {
 
   const clampSteps = useCallback((v: number) => Math.min(124, Math.max(8, v)), []);
 
+  // Parser for fixed-width encoding (each step = 2 chars):
+  // Empty: '--' • Single-digit: 'd-' • Two-digit: 'dd' (10–24)
+  // Clamp any parsed fret > 24.
   function parseFlatTab(tab: string) {
     const lines = tab.split('\n').filter(l => /^(e|B|G|D|A|E)\|/.test(l));
     if (lines.length < 6) return;
     const newNotes: Note[] = [];
-    let maxStepEncountered = 0;
+    let inferredSteps = 0;
+
     lines.forEach((line, stringIndex) => {
       const parts = line.split('|');
       if (parts.length < 2) return;
       const body = parts.slice(1, -1).join('|');
       let step = 0;
-      for (let i = 0; i < body.length; i++) {
-        const ch = body[i];
-        if (/\d/.test(ch)) {
-          let fretStr = ch;
-          if (i + 1 < body.length && /\d/.test(body[i + 1])) {
-            fretStr += body[i + 1];
-            i++;
-          }
-          newNotes.push({ string: stringIndex, fret: parseInt(fretStr, 10), step });
+      for (let i = 0; i < body.length;) {
+        const first = body[i];
+        const second = body[i + 1];
+        // Two-digit fret (10-24)
+        if (/\d/.test(first) && /\d/.test(second)) {
+          const fret = Math.min(parseInt(first + second, 10), 24);
+          newNotes.push({ string: stringIndex, fret, step });
+          i += 2;
+        } else if (/\d/.test(first) && second === '-') {
+          // Single-digit encoded as d-
+            newNotes.push({ string: stringIndex, fret: Math.min(parseInt(first, 10), 24), step });
+            i += 2;
+        } else if (first === '-' && second === '-') {
+          // Empty cell
+          i += 2;
+        } else {
+          // Fallback: treat single char as empty and advance
+          i += 1;
         }
         step++;
       }
-      if (step > maxStepEncountered) maxStepEncountered = step;
+      if (step > inferredSteps) inferredSteps = step;
     });
+
     setNotes(newNotes);
-    // If parsed tab has fewer than default steps, keep default; else use parsed size (clamped)
-    const desired = Math.max(DEFAULT_STEPS, maxStepEncountered);
+    const desired = Math.max(DEFAULT_STEPS, inferredSteps);
     setTotalSteps(desired > 124 ? 124 : desired);
   }
 
-  // Generate flat ASCII tab
+  // Generate ASCII with fixed-width cells to avoid digit merging:
+  // Each logical step becomes either '--', 'd-' or 'dd'.
   function generateTab(): string {
     return STRING_NAMES.map((stringName, stringIndex) => {
       let line = stringName + '|';
-      let col = 0;
-      while (col < totalSteps) {
-        const note = notes.find(n => n.string === stringIndex && n.step === col);
-        if (note) {
-          const fretStr = note.fret.toString();
-          line += fretStr; // multi-digit widens line
-          col += 1; // advance one logical step
+      for (let step = 0; step < totalSteps; step++) {
+        const note = notes.find(n => n.string === stringIndex && n.step === step);
+        if (!note) {
+          line += '--';
         } else {
-          line += '-';
-          col += 1;
+          const fretStr = note.fret.toString();
+          if (fretStr.length === 1) {
+            line += fretStr + '-';
+          } else {
+            line += fretStr; // two-digit (10–24)
+          }
         }
       }
       return line + '|';
@@ -199,7 +214,7 @@ export default function CreateTab() {
               ))}
             </div>
           </div>
-          <div className="mt-4 text-xs text-gray-500">Horizontal scroll for more steps (max 124). Multi‑digit frets widen the ASCII line when exported.</div>
+      <div className="mt-4 text-xs text-gray-500">Encoding: empty='--', single='d-', double='dd'. Prevents adjacent single digits merging. Horizontal scroll for more steps (max 124).</div>
         </CardContent>
       </Card>
 
