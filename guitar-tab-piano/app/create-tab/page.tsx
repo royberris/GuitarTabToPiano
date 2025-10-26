@@ -26,6 +26,7 @@ export default function CreateTab() {
   const [copied, setCopied] = useState(false);
   const DEFAULT_STEPS = 24;
   const [totalSteps, setTotalSteps] = useState<number>(DEFAULT_STEPS); // new default 24
+  const [bpm, setBpm] = useState<number>(80);
 
   // Parse existing tab content (flat format) when switching tabs
   useEffect(() => {
@@ -33,9 +34,14 @@ export default function CreateTab() {
     if (currentTab.content && currentTab.content.trim().length > 0) {
       parseFlatTab(currentTab.content);
     } else {
-      // Reset to fresh state for new/empty tab
       setNotes([]);
       setTotalSteps(DEFAULT_STEPS);
+    }
+    // Initialize BPM from tab or default
+    if (typeof (currentTab as any).bpm === 'number') {
+      setBpm((currentTab as any).bpm);
+    } else {
+      setBpm(80);
     }
   }, [currentTab]);
 
@@ -111,10 +117,10 @@ export default function CreateTab() {
     const id = setTimeout(() => {
       const tabContent = generateTab();
       setCurrentContent(tabContent);
-      if (currentTab) autoSaveCurrentTab(tabContent);
-    }, 100);
+      if (currentTab) autoSaveCurrentTab(tabContent, bpm, totalSteps);
+    }, 120);
     return () => clearTimeout(id);
-  }, [notes, totalSteps, currentTab, autoSaveCurrentTab, setCurrentContent]);
+  }, [notes, totalSteps, bpm, currentTab, autoSaveCurrentTab, setCurrentContent]);
 
   // Adjust total steps; prune notes out of range
   function updateTotalSteps(newValue: number) {
@@ -221,7 +227,7 @@ export default function CreateTab() {
       <div className="grid md:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Timeline Controls</CardTitle>
+            <CardTitle>Timeline & Tempo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div>
@@ -241,6 +247,29 @@ export default function CreateTab() {
                 </div>
               </div>
               <div className="text-xs text-gray-500 mt-1">Range 8–124 columns.</div>
+            </div>
+            <div>
+              <label className="font-medium">BPM (Tempo)</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="number"
+                  min={40}
+                  max={240}
+                  value={bpm}
+                  onChange={(e) => setBpm(Math.min(240, Math.max(40, parseInt(e.target.value || '0', 10) || 80)))}
+                  className="w-24 px-2 py-1 border rounded text-sm"
+                />
+                <input
+                  type="range"
+                  min={40}
+                  max={240}
+                  value={bpm}
+                  onChange={(e) => setBpm(parseInt(e.target.value, 10))}
+                  className="flex-1"
+                />
+                <span className="text-xs text-gray-500 w-10 text-right">{bpm}</span>
+              </div>
+              <div className="text-xs text-gray-500 mt-1">Saved with tab. Used as playback tempo on convert page.</div>
             </div>
             <div className="flex gap-2">
               <Button onClick={copyTab} className="flex-1">

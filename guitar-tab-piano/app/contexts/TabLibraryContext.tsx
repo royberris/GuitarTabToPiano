@@ -5,6 +5,8 @@ export interface TabItem {
   id: string;
   name: string;
   content: string;
+  bpm: number; // playback tempo associated with this tab
+  steps: number; // number of timeline steps (columns)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -12,12 +14,12 @@ export interface TabItem {
 interface TabLibraryContextType {
   tabs: TabItem[];
   currentTab: TabItem | null;
-  createTab: (name: string, content?: string) => TabItem;
-  updateTab: (id: string, updates: Partial<Pick<TabItem, 'name' | 'content'>>) => void;
+  createTab: (name: string, content?: string, bpm?: number, steps?: number) => TabItem;
+  updateTab: (id: string, updates: Partial<Pick<TabItem, 'name' | 'content' | 'bpm' | 'steps'>>) => void;
   deleteTab: (id: string) => void;
-  selectTab: (id: string, autoSaveContent?: string) => void;
+  selectTab: (id: string, autoSaveContent?: string, autoSaveBpm?: number, autoSaveSteps?: number) => void;
   clearSelection: () => void;
-  autoSaveCurrentTab: (content: string) => void;
+  autoSaveCurrentTab: (content: string, bpm?: number, steps?: number) => void;
 }
 
 const TabLibraryContext = createContext<TabLibraryContextType | undefined>(undefined);
@@ -45,6 +47,8 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
       if (savedTabs) {
         const parsedTabs = JSON.parse(savedTabs).map((tab: any) => ({
           ...tab,
+          bpm: typeof tab.bpm === 'number' ? tab.bpm : 80,
+          steps: typeof tab.steps === 'number' ? tab.steps : inferStepsFromContent(tab.content),
           createdAt: new Date(tab.createdAt),
           updatedAt: new Date(tab.updatedAt),
         }));
@@ -77,6 +81,8 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
       id: Date.now().toString(),
       name: 'My First Tab',
       content: defaultContent,
+      bpm: 80,
+      steps: inferStepsFromContent(defaultContent),
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -93,11 +99,13 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
     }
   }, [tabs]);
 
-  const createTab = useCallback((name: string, content: string = '') => {
+  const createTab = useCallback((name: string, content: string = '', bpm: number = 80, steps: number = 24) => {
     const newTab: TabItem = {
       id: Date.now().toString(),
       name,
       content,
+      bpm,
+      steps,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -106,7 +114,7 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
     return newTab;
   }, []);
 
-  const updateTab = useCallback((id: string, updates: Partial<Pick<TabItem, 'name' | 'content'>>) => {
+  const updateTab = useCallback((id: string, updates: Partial<Pick<TabItem, 'name' | 'content' | 'bpm' | 'steps'>>) => {
     setTabs(prev => prev.map(tab => 
       tab.id === id 
         ? { ...tab, ...updates, updatedAt: new Date() }
@@ -129,6 +137,8 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
         id: Date.now().toString(),
         name: 'Empty Tab',
         content: '',
+        bpm: 80,
+        steps: 24,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -146,10 +156,13 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
     }
   }, [tabs, currentTab?.id]);
 
-  const selectTab = useCallback((id: string, autoSaveContent?: string) => {
-    // Auto-save current tab before switching if content is provided
-    if (currentTab && autoSaveContent !== undefined) {
-      updateTab(currentTab.id, { content: autoSaveContent });
+  const selectTab = useCallback((id: string, autoSaveContent?: string, autoSaveBpm?: number, autoSaveSteps?: number) => {
+    if (currentTab) {
+      const updates: Partial<Pick<TabItem,'content'|'bpm'|'steps'>> = {};
+      if (autoSaveContent !== undefined) updates.content = autoSaveContent;
+      if (autoSaveBpm !== undefined) updates.bpm = autoSaveBpm;
+      if (autoSaveSteps !== undefined) updates.steps = autoSaveSteps;
+      if (Object.keys(updates).length) updateTab(currentTab.id, updates);
     }
     
     const tab = tabs.find(t => t.id === id);
@@ -160,9 +173,12 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
     setCurrentTab(null);
   }, []);
 
-  const autoSaveCurrentTab = useCallback((content: string) => {
+  const autoSaveCurrentTab = useCallback((content: string, bpm?: number, steps?: number) => {
     if (currentTab) {
-      updateTab(currentTab.id, { content });
+      const updates: Partial<Pick<TabItem,'content'|'bpm'|'steps'>> = { content };
+      if (typeof bpm === 'number') updates.bpm = bpm;
+      if (typeof steps === 'number') updates.steps = steps;
+      updateTab(currentTab.id, updates);
     }
   }, [currentTab, updateTab]);
 
@@ -180,4 +196,24 @@ export function TabLibraryProvider({ children }: TabLibraryProviderProps) {
       {children}
     </TabLibraryContext.Provider>
   );
+}
+
+// Infer steps (columns) from ASCII content. Supports fixed-width (2 chars per step) and legacy variable width.
+function inferStepsFromContent(content: string): number {
+  if (!content) return 24;
+  const lines = content.replace(/\r/g,'').split('\n').filter(l=>/^(e|B|G|D|A|E)\|/.test(l));
+  if (lines.length < 6) return 24;
+  // Take first string line as representative
+  const first = lines[0];
+  const body = first.slice(first.indexOf('|')+1).replace(/\|+$/,'');
+  if (body.length % 2 === 0) {
+    // Check if fixed-width pattern holds
+    let fixed = true;
+    for (let i=0;i<body.length;i+=2){
+      const pair = body.slice(i,i+2);
+      if (!/^--|\d-|\d\d$/.test(pair)) { fixed=false; break; }
+    }
+    if (fixed) return body.length/2;
+  }
+  return body.length || 24;
 }

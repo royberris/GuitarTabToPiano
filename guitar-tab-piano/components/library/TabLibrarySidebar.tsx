@@ -16,7 +16,9 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
   const [isLoadingTab, setIsLoadingTab] = useState(false);
   const [newTabName, setNewTabName] = useState('');
   const [loadTabName, setLoadTabName] = useState('');
+  const [newTabBpm, setNewTabBpm] = useState<number>(80);
   const [loadTabContent, setLoadTabContent] = useState('');
+  const [loadTabBpm, setLoadTabBpm] = useState<number>(80);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -28,14 +30,12 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
         const currentContent = getCurrentContent();
         updateTab(currentTab.id, { content: currentContent });
       }
-      
-      // Create empty tab (no default content)
-      const newTab = createTab(newTabName.trim());
+      const bpm = Math.max(40, Math.min(240, newTabBpm));
+      const newTab = createTab(newTabName.trim(), '', bpm);
       selectTab(newTab.id);
-      if (onTabSelect) {
-        onTabSelect(newTab.content);
-      }
+      if (onTabSelect) onTabSelect(newTab.content);
       setNewTabName('');
+      setNewTabBpm(80);
       setIsCreating(false);
     }
   };
@@ -148,7 +148,7 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
           )}
 
           {isCreating && (
-            <div className="space-y-2 mt-2">
+            <div className="space-y-3 mt-2">
               <input
                 type="text"
                 placeholder="Tab name..."
@@ -164,10 +164,22 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
                 className="w-full px-3 py-2 text-sm border rounded-md"
                 autoFocus
               />
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium w-14">BPM</label>
+                <input
+                  type="number"
+                  min={40}
+                  max={240}
+                  value={newTabBpm}
+                  onChange={(e) => setNewTabBpm(parseInt(e.target.value || '0', 10) || 80)}
+                  className="w-24 px-2 py-1 text-xs border rounded"
+                />
+              </div>
               <div className="flex gap-2">
                 <Button onClick={handleCreateTab} size="sm" className="flex-1">Create</Button>
-                <Button variant="outline" onClick={() => { setIsCreating(false); setNewTabName(''); }} size="sm" className="flex-1">Cancel</Button>
+                <Button variant="outline" onClick={() => { setIsCreating(false); setNewTabName(''); setNewTabBpm(80); }} size="sm" className="flex-1">Cancel</Button>
               </div>
+              <div className="text-[10px] text-gray-500">Set starting tempo (40–240 BPM). You can change it later in the editor.</div>
             </div>
           )}
 
@@ -181,6 +193,18 @@ export function TabLibrarySidebar({ onTabSelect, getCurrentContent }: TabLibrary
                 className="w-full px-3 py-2 text-sm border rounded-md"
                 autoFocus
               />
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium w-14">BPM</label>
+                <input
+                  type="number"
+                  min={40}
+                  max={240}
+                  value={loadTabBpm}
+                  onChange={(e) => setLoadTabBpm(Math.min(240, Math.max(40, parseInt(e.target.value || '0', 10) || 80)))}
+                  className="w-24 px-2 py-1 text-xs border rounded"
+                />
+                <span className="text-[10px] text-gray-500">Playback tempo</span>
+              </div>
               <textarea
                 placeholder={"Paste 6-line ASCII tab starting with:\ne|\nB|\nG|\nD|\nA|\nE|"}
                 value={loadTabContent}

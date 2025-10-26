@@ -268,7 +268,7 @@ export default function GuitarTabToPiano() {
   const [events, setEvents] = useState<{ step: number; notes: { string: string; fret: number; midi: number; key: number; name: string }[] }[]>([]);
   const [playing, setPlaying] = useState(false);
   const [cursor, setCursor] = useState(0);
-  const [bpm, setBpm] = useState(80); // BPM instead of msPerStep
+  const [bpm, setBpm] = useState(80); // BPM (may be overridden by tab's saved bpm)
   const timerRef = useRef<number | null>(null);
   // Removed ChatGPT prompt copy functionality
   const audioCtxRef = useRef<AudioContext | null>(null); // added
@@ -280,8 +280,10 @@ export default function GuitarTabToPiano() {
     if (currentTab) {
       setTab(currentTab.content);
       setCurrentContent(currentTab.content);
+      if (typeof (currentTab as any).bpm === 'number') {
+        setBpm((currentTab as any).bpm);
+      }
     } else {
-      // Handle case when no tab is selected (shouldn't happen with our auto-select logic)
       setTab('');
       setCurrentContent('');
     }
