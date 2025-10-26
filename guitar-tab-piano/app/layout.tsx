@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Guitar Tab to Piano",
-  description: "Convert guitar tabs to piano visualization and create tabs visually",
+  title: "Guitar Tab Tools - berris.dev",
+  description: "Create, visualize & convert guitar tabs (piano + fretboard) at berris.dev",
 };
 
 export default function RootLayout({
